@@ -100,11 +100,17 @@
     const groundBody = world.createRigidBody(groundBodyDesc);
     const groundColliderDesc = RAPIER.ColliderDesc.cuboid(10, 0.1, 10);
     const groundCollider = world.createCollider(groundColliderDesc, groundBody);
-    // Remove collision filtering to test floor collision
-    // groundCollider.setCollisionGroups(GROUND_GROUP);
-    // groundCollider.setSolverGroups(RAGDOLL_GROUP);
     
     console.log('Ground collider created at position:', groundBody.translation());
+    console.log('Ground collider size: 20x0.2x20 units');
+    
+    // Make sure ground is at Y=0 and visible
+    const groundMesh = scene.getObjectByName('ground') || scene.children.find(child => 
+      child.geometry && child.geometry.type === 'PlaneGeometry'
+    );
+    if (groundMesh) {
+      console.log('Visual ground mesh position:', groundMesh.position);
+    }
   }
 
   async function loadModel() {
@@ -170,6 +176,30 @@
     console.log('=== GLB STRUCTURE DEBUG ===');
     console.log('Available collision objects:', colliderObjects.map(c => c.name));
     console.log('Available bones:', originalBones.map(b => b.name));
+    
+    // Special check for leg-related items
+    const legColliders = colliderObjects.filter(c => c.name.toLowerCase().includes('leg'));
+    const legBones = originalBones.filter(b => b.name.toLowerCase().includes('leg'));
+    console.log('LEG COLLIDERS FOUND:', legColliders.map(c => c.name));
+    console.log('LEG BONES FOUND:', legBones.map(b => b.name));
+    
+    if (legColliders.length === 0) {
+      console.error('❌ NO LEG COLLISION OBJECTS FOUND! Check GLB file.');
+      alert('NO LEG COLLISION OBJECTS FOUND! Check browser console for details.');
+    }
+    if (legBones.length === 0) {
+      console.error('❌ NO LEG BONES FOUND! Check bone naming.');
+      alert('NO LEG BONES FOUND! Check browser console for details.');
+    }
+    
+    // Also check for common leg naming variations
+    const legVariations = ['thigh', 'shin', 'calf', 'femur', 'tibia'];
+    legVariations.forEach(variation => {
+      const found = colliderObjects.filter(c => c.name.toLowerCase().includes(variation));
+      if (found.length > 0) {
+        console.log(`Found collision objects with "${variation}":`, found.map(c => c.name));
+      }
+    });
     
     // Debug collision object details
     colliderObjects.forEach(colObj => {
@@ -266,6 +296,20 @@
       
       const rigidBody = world.createRigidBody(bodyDesc);
       
+      // Debug collider size for legs specifically
+      if (colObj.name.toLowerCase().includes('leg')) {
+        console.log(`Creating leg collider for ${colObj.name}:`, {
+          originalSize: size,
+          worldScale: colWorldScale,
+          scaledSize: scaledSize,
+          halfSizes: { 
+            x: Math.max(scaledSize.x * 0.5, 0.03),
+            y: Math.max(scaledSize.y * 0.5, 0.03), 
+            z: Math.max(scaledSize.z * 0.5, 0.03)
+          }
+        });
+      }
+      
       const colliderDesc = RAPIER.ColliderDesc.cuboid(
         Math.max(scaledSize.x * 0.5, 0.03),
         Math.max(scaledSize.y * 0.5, 0.03),
@@ -273,6 +317,23 @@
       );
       
       const collider = world.createCollider(colliderDesc, rigidBody);
+      
+      // Ensure all colliders can hit the ground (no collision filtering)
+      // collider.setCollisionGroups(0xFFFF); // Collide with everything
+      // collider.setSolverGroups(0xFFFF);    // Solve with everything
+      
+      // Make sure leg colliders can collide with ground
+      if (colObj.name.toLowerCase().includes('leg')) {
+        console.log(`Leg collider created at position:`, {
+          x: colWorldPos.x.toFixed(2),
+          y: colWorldPos.y.toFixed(2), 
+          z: colWorldPos.z.toFixed(2)
+        });
+        
+        // Extra verification for leg collision
+        console.log(`Leg ${colObj.name} physics body handle:`, rigidBody.handle);
+        console.log(`Leg ${colObj.name} collider handle:`, collider.handle);
+      }
       
       // Calculate offset from collision object to bone for proper bone updates
       const boneWorldPos = new THREE.Vector3();
@@ -637,6 +698,12 @@
         // Update matrices
         originalBone.updateMatrix();
         originalBone.updateMatrixWorld(true);
+        
+        // Debug: Check if legs are going through floor
+        if (originalBone.name.toLowerCase().includes('leg') && boneWorldPos.y < 0.2) {
+          console.warn(`⚠️ ${originalBone.name} is near/below ground! Y position: ${boneWorldPos.y.toFixed(2)}`);
+          console.log(`Physics body Y: ${physicsPos.y.toFixed(2)}, Bone world Y: ${boneWorldPos.y.toFixed(2)}`);
+        }
       }
     });
     
